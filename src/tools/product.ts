@@ -15,7 +15,8 @@ export function registerProductTools(server: McpServer) {
             description: "Search for products in the current store context.",
             inputSchema: StoreCredentialsSchema.merge(z.object({
                 term: z.string().describe("Search keyword (e.g., 't-shirt', 'blue')"),
-                limit: z.number().default(5).describe("Max number of products to return"),
+                limit: z.number().max(3).default(3).describe("Max number of products to return (Max: 3)"),
+                page: z.number().default(1).describe("The page number to retrieve"),
             })).shape
         },
         async (args) => {
@@ -29,13 +30,16 @@ export function registerProductTools(server: McpServer) {
             // Using the /store-api/search endpoint for optimized search
             const response = await client.post<any>("search", {
                 search: args.term,
-                limit: args.limit,
+                limit: Math.min(args.limit, 3),
+                page: args.page,
                 includes: {
-                    product: ["id", "productNumber", "name", "translated", "stock", "toalStock", "calculatedPrice", "parentId", "options", "properties", "availableStock"],
+                    product: ["id", "productNumber", "name", "translated", "stock", "availableStock", "calculatedPrice", "parentId", "options", "properties", "availableStock", "seoUrls", "media", "cover"],
                     product_media: ["media"],
-                    media: ["url"]
+                    media: ["url"],
+                    seo_url: ["seoPathInfo"]
                 },
                 associations: {
+                    seoUrls: {},
                     properties: {
                         associations: {
                             group: {}
@@ -45,7 +49,9 @@ export function registerProductTools(server: McpServer) {
                         associations: {
                             group: {}
                         }
-                    }
+                    },
+                    media: {},
+                    cover: {}
                 }
             });
 
@@ -77,6 +83,8 @@ export function registerProductTools(server: McpServer) {
                 }
             }
 
+            const baseShopUrl = (args.shopUrl || "").replace(/\/$/, "");
+
             const products = response.elements.map((p: any) => {
                 let name = p.name ?? p.translated?.name;
 
@@ -88,23 +96,50 @@ export function registerProductTools(server: McpServer) {
                 }
                 name = name ?? "Unknown";
 
-                // Use properties if options are empty (Shopware variants often use properties)
                 const opts = p.properties && p.properties.length > 0 ? p.properties : p.options;
+                const options = opts?.map((o: any) => ({
+                    group: o.group?.name ?? o.group?.translated?.name,
+                    option: o.name ?? o.translated?.name
+                }));
 
-                const optionsStr = opts?.map((o: any) => {
-                    const group = o.group?.name ?? o.group?.translated?.name;
-                    const option = o.name ?? o.translated?.name;
-                    return group ? `${group}: ${option}` : option;
-                }).join(" | ");
+                const price = p.calculatedPrice?.totalPrice ? p.calculatedPrice.totalPrice : 0;
 
-                const fullName = optionsStr ? `${name} ( ${optionsStr} )` : name;
+                // Get cover image or first media image - ensure absolute URL
+                let imageUrl = p.cover?.media?.url || p.media?.[0]?.media?.url || null;
+                if (imageUrl && !imageUrl.startsWith('http') && baseShopUrl) {
+                    imageUrl = `${baseShopUrl}/${imageUrl.replace(/^\//, '')}`;
+                }
 
-                const price = p.calculatedPrice?.totalPrice ? p.calculatedPrice.totalPrice : "N/A";
-                return `- [${fullName}] (ID: ${p.id}, SKU: ${p.productNumber}) - Price: ${price} - Stock: ${p.availableStock ?? "Unknown"}`;
-            }).join("\n");
+                // Get SEO URL slug
+                const seoUrl = p.seoUrls?.[0]?.seoPathInfo || `detail/${p.id}`;
+                const productUrl = baseShopUrl ? `${baseShopUrl}/${seoUrl}` : seoUrl;
+
+                return {
+                    id: p.id,
+                    productNumber: p.productNumber,
+                    name: name,
+                    price: price,
+                    stock: p.availableStock ?? 0,
+                    options: options,
+                    imageUrl: imageUrl,
+                    url: productUrl
+                };
+            });
 
             return {
-                content: [{ type: "text", text: `Found products for "${args.term}":\n${products}` }]
+                content: [{
+                    type: "text",
+                    text: JSON.stringify({
+                        results: products,
+                        searchTerm: args.term,
+                        pagination: {
+                            total: response.total ?? products.length,
+                            page: args.page,
+                            limit: args.limit,
+                            hasNextPage: (response.total ?? 0) > (args.page * args.limit)
+                        }
+                    }, null, 2)
+                }]
             };
         }
     );
@@ -137,7 +172,9 @@ export function registerProductTools(server: McpServer) {
                 limit: 1,
                 associations: {
                     media: {},
+                    cover: {},
                     manufacturer: {},
+                    seoUrls: {},
                     properties: {
                         associations: {
                             group: {}
@@ -156,31 +193,40 @@ export function registerProductTools(server: McpServer) {
             }
 
             const p = response.elements[0];
-            const price = p.calculatedPrice?.totalPrice || "N/A";
-            const description = p.description ? p.description.replace(/<[^>]*>?/gm, '') : "No description available."; // Strip HTML
+            const price = p.calculatedPrice?.totalPrice || 0;
+            const description = p.description ? p.description.replace(/<[^>]*>?/gm, '') : null;
 
-            // Extract properties/options
             const opts = p.properties && p.properties.length > 0 ? p.properties : p.options;
-            const optionsStr = opts?.map((o: any) => {
-                const group = o.group?.name ?? o.group?.translated?.name;
-                const option = o.name ?? o.translated?.name;
-                return group ? `${group}: ${option}` : option;
-            }).join(" | ") || "None";
+            const options = opts?.map((o: any) => ({
+                group: o.group?.name ?? o.group?.translated?.name,
+                option: o.name ?? o.translated?.name
+            }));
 
-            const details = `
-Product: ${p.name}
-SKU: ${p.productNumber}
-Price: ${price}
-Manufacturer: ${p.manufacturer?.name || "Unknown"}
-Available Stock: ${p.availableStock}
-Features/Options: ${optionsStr}
-
-Description:
-${description}
-            `.trim();
+            const baseShopUrl = (args.shopUrl || "").replace(/\/$/, "");
+            const productDetail = {
+                id: p.id,
+                productNumber: p.productNumber,
+                name: p.name ?? p.translated?.name,
+                price: price,
+                manufacturer: p.manufacturer?.name || null,
+                stock: p.availableStock ?? 0,
+                options: options,
+                description: description,
+                images: p.media?.map((m: any) => {
+                    let url = m.media?.url;
+                    if (url && !url.startsWith('http') && baseShopUrl) {
+                        url = `${baseShopUrl}/${url.replace(/^\//, '')}`;
+                    }
+                    return url;
+                }).filter(Boolean) || [],
+                url: baseShopUrl ? `${baseShopUrl}/${p.seoUrls?.[0]?.seoPathInfo || `detail/${p.id}`}` : `detail/${p.id}`
+            };
 
             return {
-                content: [{ type: "text", text: details }]
+                content: [{
+                    type: "text",
+                    text: JSON.stringify(productDetail, null, 2)
+                }]
             };
         }
     );

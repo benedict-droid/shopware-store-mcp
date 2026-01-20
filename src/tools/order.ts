@@ -8,20 +8,23 @@ export function registerOrderTools(server: McpServer) {
         {
             description: "List orders for the currently logged-in customer.",
             inputSchema: StoreCredentialsSchema.merge(z.object({
-                limit: z.number().default(5).describe("Max number of orders to return"),
+                limit: z.number().max(3).default(3).describe("Max number of orders to return (Max: 3)"),
+                page: z.number().default(1).describe("The page number to retrieve"),
             })).shape
         },
         async (args) => {
             const client = new StoreApiClient({
                 swAccessKey: args.swAccessKey,
                 swContextToken: args.swContextToken,
+                swLanguageId: "2fbb5fe2e29a4d70aa5854ce7ce3e20b", // Hardcoded English Language ID
                 shopUrl: args.shopUrl
             });
 
             try {
                 // POST /store-api/order with criteria
                 const response = await client.post<any>("order", {
-                    limit: args.limit,
+                    limit: Math.min(args.limit, 3),
+                    page: args.page,
                     sort: [{ field: "orderDateTime", order: "DESC" }],
                     associations: {
                         lineItems: {},
@@ -29,20 +32,37 @@ export function registerOrderTools(server: McpServer) {
                     }
                 });
 
-                if (!response.orders || response.orders.length === 0) {
+                const ordersList = response.orders?.elements || [];
+
+                if (ordersList.length === 0 && args.page === 1) {
                     return {
                         content: [{ type: "text", text: "No orders found for this customer." }]
                     };
                 }
 
-                const orders = response.orders.map((o: any) => {
-                    const date = new Date(o.orderDateTime).toLocaleDateString();
-                    const state = o.stateMachineState?.name || "Unknown";
-                    return `- Order #${o.orderNumber} (${date}) - Status: ${state} - Total: ${o.price.totalPrice}`;
-                }).join("\n");
+                const orders = ordersList.map((o: any) => {
+                    return {
+                        orderNumber: o.orderNumber,
+                        date: new Date(o.orderDateTime).toLocaleDateString(),
+                        status: o.stateMachineState?.name || "Unknown",
+                        total: o.price?.totalPrice || 0,
+                        id: o.id
+                    };
+                });
 
                 return {
-                    content: [{ type: "text", text: `Your Orders:\n${orders}` }]
+                    content: [{
+                        type: "text",
+                        text: JSON.stringify({
+                            results: orders,
+                            pagination: {
+                                total: response.orders?.total ?? orders.length,
+                                page: args.page,
+                                limit: args.limit,
+                                hasNextPage: (response.orders?.total ?? 0) > (args.page * args.limit)
+                            }
+                        }, null, 2)
+                    }]
                 };
 
             } catch (error: any) {
@@ -70,6 +90,7 @@ export function registerOrderTools(server: McpServer) {
             const client = new StoreApiClient({
                 swAccessKey: args.swAccessKey,
                 swContextToken: args.swContextToken,
+                swLanguageId: "2fbb5fe2e29a4d70aa5854ce7ce3e20b", // Hardcoded English Language ID
                 shopUrl: args.shopUrl
             });
 

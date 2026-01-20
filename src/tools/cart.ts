@@ -13,6 +13,7 @@ export function registerCartTools(server: McpServer) {
             const client = new StoreApiClient({
                 swAccessKey: args.swAccessKey,
                 swContextToken: args.swContextToken,
+                swLanguageId: "2fbb5fe2e29a4d70aa5854ce7ce3e20b", // Hardcoded English Language ID
                 shopUrl: args.shopUrl
             });
 
@@ -47,6 +48,7 @@ export function registerCartTools(server: McpServer) {
             const client = new StoreApiClient({
                 swAccessKey: args.swAccessKey,
                 swContextToken: args.swContextToken,
+                swLanguageId: "2fbb5fe2e29a4d70aa5854ce7ce3e20b", // Hardcoded English Language ID
                 shopUrl: args.shopUrl
             });
 

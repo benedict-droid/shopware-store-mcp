@@ -13,13 +13,21 @@ export class StoreApiClient {
     constructor(private credentials: StoreCredentials) { }
 
     private get headers(): HeadersInit {
-        return {
+        const headers: Record<string, string> = {
             "Content-Type": "application/json",
             "Accept": "application/json",
             "sw-access-key": this.credentials.swAccessKey || "",
-            "sw-context-token": this.credentials.swContextToken || "",
-            "sw-language-id": this.credentials.swLanguageId || "",
         };
+
+        if (this.credentials.swContextToken) {
+            headers["sw-context-token"] = this.credentials.swContextToken;
+        }
+
+        if (this.credentials.swLanguageId) {
+            headers["sw-language-id"] = this.credentials.swLanguageId;
+        }
+
+        return headers;
     }
 
     private get baseUrl(): string {
