@@ -55,6 +55,7 @@ export function registerProductTools(server: McpServer) {
                 }
             });
 
+
             if (!response.elements || response.elements.length === 0) {
                 return {
                     content: [{ type: "text", text: `No products found for search term: "${args.term}"` }]

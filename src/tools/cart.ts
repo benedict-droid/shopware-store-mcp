@@ -17,21 +17,48 @@ export function registerCartTools(server: McpServer) {
                 shopUrl: args.shopUrl
             });
 
-            const cart = await client.get<any>("checkout/cart");
+            try {
+                const cart = await client.get<any>("checkout/cart");
 
-            if (!cart.lineItems || cart.lineItems.length === 0) {
+                if (!cart.lineItems || cart.lineItems.length === 0) {
+                    return {
+                        content: [{ type: "text", text: "The cart is currently empty." }]
+                    };
+                }
+
+
+                const cartItems = cart.lineItems.map((item: any) => {
+                    return {
+                        id: item.referencedId,
+                        name: item.label,
+                        quantity: item.quantity,
+                        price: item.price?.totalPrice || 0,
+                        unitPrice: item.price?.unitPrice || 0,
+                        type: item.type,
+                        imageUrl: item.cover?.url || null,
+                        productNumber: item.payload?.productNumber || null
+                    };
+                });
+
                 return {
-                    content: [{ type: "text", text: "The cart is currently empty." }]
+                    content: [{
+                        type: "text",
+                        text: JSON.stringify({
+                            results: cartItems,
+                            total: cart.price?.totalPrice || 0,
+                            summary: `Total Items: ${cartItems.length} | Total Price: ${cart.price?.totalPrice}`
+                        }, null, 2)
+                    }]
                 };
+            } catch (error: any) {
+                if (error.message && error.message.includes("403")) {
+                    return {
+                        isError: false,
+                        content: [{ type: "text", text: "Unable to access cart. The user might not be logged in or the session is invalid. Please ask the user to log in." }]
+                    };
+                }
+                throw error;
             }
-
-            const items = cart.lineItems.map((item: any) => {
-                return `- ${item.quantity}x ${item.label} (${item.type}) - ${item.price?.totalPrice || "N/A"}`;
-            }).join("\n");
-
-            return {
-                content: [{ type: "text", text: `Current Cart (${cart.price?.totalPrice} total):\n${items}` }]
-            };
         }
     );
 
@@ -52,8 +79,7 @@ export function registerCartTools(server: McpServer) {
                 shopUrl: args.shopUrl
             });
 
-            // Store API expects: /checkout/cart/line-item
-            // Body: { items: [ { type: 'product', referencedId: '...', quantity: 1 } ] }
+
 
             try {
                 const response = await client.post<any>("checkout/cart/line-item", {
@@ -72,10 +98,16 @@ export function registerCartTools(server: McpServer) {
                 return {
                     content: [{ type: "text", text: `Successfully added ${args.quantity}x product to cart. New cart total: ${response.price?.totalPrice}` }]
                 };
-            } catch (error) {
+            } catch (error: any) {
+                if (error.message && error.message.includes("403")) {
+                    return {
+                        isError: false,
+                        content: [{ type: "text", text: "Unable to add to cart. The user is not logged in. Please ask the user to log in first." }]
+                    };
+                }
                 return {
                     isError: true,
-                    content: [{ type: "text", text: `Failed to add product to cart. Error: ${error}` }]
+                    content: [{ type: "text", text: `Failed to add product to cart. Error: ${error.message || error}` }]
                 };
             }
         }

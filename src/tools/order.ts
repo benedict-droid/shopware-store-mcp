@@ -19,7 +19,6 @@ export function registerOrderTools(server: McpServer) {
                 swLanguageId: "2fbb5fe2e29a4d70aa5854ce7ce3e20b", // Hardcoded English Language ID
                 shopUrl: args.shopUrl
             });
-
             try {
                 // POST /store-api/order with criteria
                 const response = await client.post<any>("order", {
@@ -69,8 +68,8 @@ export function registerOrderTools(server: McpServer) {
                 // If 403, usually means not logged in
                 if (error.message && error.message.includes("403")) {
                     return {
-                        isError: true,
-                        content: [{ type: "text", text: "Access Denied: You must be logged in to view orders." }]
+                        isError: false, // Not a system error, just a state
+                        content: [{ type: "text", text: "The user is currently NOT logged in. Please ask the user to log in to view their order history." }]
                     };
                 }
                 throw error;
@@ -103,9 +102,17 @@ export function registerOrderTools(server: McpServer) {
                     content: [{ type: "text", text: `Success! Order placed. Order Number: ${response.orderNumber} (ID: ${response.id})` }]
                 };
             } catch (error: any) {
+                // Handle Not Logged In
+                if (error.message && error.message.includes("403")) {
+                    return {
+                        isError: false,
+                        content: [{ type: "text", text: "The user is NOT logged in. You cannot place an order until the user logs in. Please ask them to log in." }]
+                    };
+                }
+
                 return {
                     isError: true,
-                    content: [{ type: "text", text: `Failed to place order. Ensure you have items in cart and are logged in (or provided guest details). Error: ${error}` }]
+                    content: [{ type: "text", text: `Failed to place order. Ensure you have items in cart and are logged in. Error: ${error.message || error}` }]
                 };
             }
         }
