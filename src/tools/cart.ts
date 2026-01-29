@@ -26,7 +26,6 @@ export function registerCartTools(server: McpServer) {
                     };
                 }
 
-
                 const cartItems = cart.lineItems.map((item: any) => {
                     return {
                         id: item.referencedId,

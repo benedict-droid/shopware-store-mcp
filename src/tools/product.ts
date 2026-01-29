@@ -18,7 +18,7 @@ export function registerProductTools(server: McpServer) {
                 limit: z.number().max(3).default(3).describe("Max number of products"),
                 page: z.number().default(1).describe("The page number"),
                 // ALLOW 'rating-desc' explicitly to prevent crashes if LLM guesses it
-                sort: z.enum(["price-asc", "price-desc", "rating", "rating-desc", "rating-asc", "name-asc", "name-desc"]).optional().describe("Sort order"),
+                sort: z.enum(["relevance", "price-asc", "price-desc", "rating", "rating-desc", "rating-asc", "name-asc", "name-desc"]).optional().describe("Sort order"),
                 minPrice: z.number().optional().describe("Minimum price filter"),
                 maxPrice: z.number().optional().describe("Maximum price filter")
             })).shape
@@ -72,17 +72,21 @@ export function registerProductTools(server: McpServer) {
                 order: order,
                 filter: filters.length > 0 ? filters : undefined,
                 includes: {
-                    product: ["id", "productNumber", "name", "translated", "stock", "availableStock", "calculatedPrice", "parentId", "options", "properties", "availableStock", "seoUrls", "media", "cover", "ratingAverage"],
+                    product: ["id", "productNumber", "name", "translated", "stock", "availableStock", "calculatedPrice", "parentId", "options", "properties", "availableStock", "seoUrls", "media", "cover", "ratingAverage", "description", "deliveryTime", "manufacturer"],
                     product_media: ["media"],
                     media: ["url"],
-                    seo_url: ["seoPathInfo"]
+                    seo_url: ["seoPathInfo"],
+                    delivery_time: ["name", "translated"],
+                    product_manufacturer: ["name", "translated"]
                 },
                 associations: {
                     seoUrls: {},
                     properties: { associations: { group: {} } },
                     options: { associations: { group: {} } },
                     media: {},
-                    cover: {}
+                    cover: {},
+                    deliveryTime: {}, // Request delivery time
+                    manufacturer: {} // Request manufacturer
                 }
             });
 
@@ -145,15 +149,26 @@ export function registerProductTools(server: McpServer) {
                 const seoUrl = p.seoUrls?.[0]?.seoPathInfo || `detail/${p.id}`;
                 const productUrl = baseShopUrl ? `${baseShopUrl}/${seoUrl}` : seoUrl;
 
+                // Extract and clean description
+                let description = p.description ?? p.translated?.description ?? "";
+                description = description.replace(/<[^>]*>?/gm, ''); // Simple HTML strip
+                if (description.length > 500) {
+                    description = description.substring(0, 500) + "..."; // Truncate to save tokens
+                }
+
                 return {
                     id: p.id,
                     productNumber: p.productNumber,
                     name: name,
+                    description: description,
+                    manufacturer: p.manufacturer?.name || null,
                     price: price,
+                    deliveryTime: p.deliveryTime?.name || p.deliveryTime?.translated?.name || null, // Search result delivery time
                     stock: p.availableStock ?? 0,
                     rating: p.ratingAverage ?? null,
                     options: options,
-                    imageUrl: imageUrl,
+                    imageUrl: imageUrl, // Keep for list view compatibility
+                    images: imageUrl ? [imageUrl] : [], // Add for detail view compatibility
                     url: productUrl
                 };
             });
@@ -224,6 +239,7 @@ export function registerProductTools(server: McpServer) {
                     media: {},
                     cover: {},
                     manufacturer: {},
+                    deliveryTime: {}, // Request delivery time
                     seoUrls: {},
                     properties: {
                         associations: {
@@ -257,12 +273,13 @@ export function registerProductTools(server: McpServer) {
                 id: p.id,
                 productNumber: p.productNumber,
                 name: p.name ?? p.translated?.name,
+                description: description,
                 price: price,
                 manufacturer: p.manufacturer?.name || null,
+                deliveryTime: p.deliveryTime?.name || p.deliveryTime?.translated?.name || "Standard Delivery", // Added Delivery Time
                 stock: p.availableStock ?? 0,
                 rating: p.ratingAverage ?? null,
                 options: options,
-                description: description,
                 images: p.media?.map((m: any) => {
                     let url = m.media?.url;
                     if (url && !url.startsWith('http') && baseShopUrl) {
