@@ -68,7 +68,7 @@ export function registerProductTools(server: McpServer) {
             // Fetch Context for Currency
             let currencySymbol = "";
             try {
-                const contextRes = await client.post<any>("context", {});
+                const contextRes = await client.get<any>("context");
                 currencySymbol = contextRes.currency?.symbol || "";
             } catch (e) {
                 console.warn("Failed to fetch context currency:", e);
