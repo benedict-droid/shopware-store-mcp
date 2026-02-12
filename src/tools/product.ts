@@ -240,20 +240,18 @@ export function registerProductTools(server: McpServer) {
             let currencySymbol = "";
             try {
                 const contextRes = await client.get<any>("context");
-                console.error("DEBUG: Shop Context Response:", JSON.stringify(contextRes));
                 currencySymbol = contextRes.currency?.symbol || "";
             } catch (e) {
                 console.error("DEBUG: Failed to fetch context currency:", e);
             }
 
             const p = response.elements[0];
-            const price = p.calculatedPrice?.totalPrice || 0;
-            const description = p.description ? p.description.replace(/<[^>]*>?/gm, '') : null;
 
             // ---------------------------------------------------------
-            // VARIANT AGGREGATION LOGIC
+            // VARIANT AGGREGATION LOGIC + PARENT DATA FETCHING
             // ---------------------------------------------------------
             let allVariants: any[] = [];
+            let parent: any = null;
 
             // Case A: Current product is a variant (has parent)
             if (p.parentId) {
@@ -265,11 +263,18 @@ export function registerProductTools(server: McpServer) {
                                 associations: {
                                     options: { associations: { group: {} } }
                                 }
-                            }
+                            },
+                            // Additional associations for inheriting parent data
+                            media: {},
+                            cover: {},
+                            manufacturer: {},
+                            categories: {},
+                            seoUrls: {}
                         }
                     });
-                    if (parentRes.elements?.[0]?.children) {
-                        allVariants = parentRes.elements[0].children;
+                    if (parentRes.elements?.[0]) {
+                        parent = parentRes.elements[0];
+                        allVariants = parent.children || [];
                     }
                 } catch (e) {
                     console.error("Failed to fetch parent/siblings:", e);
@@ -279,6 +284,15 @@ export function registerProductTools(server: McpServer) {
             else if (p.children && p.children.length > 0) {
                 allVariants = p.children;
             }
+
+            // ---------------------------------------------------------
+            // APPLY PARENT DATA FALLBACKS FOR VARIANTS
+            // ---------------------------------------------------------
+            const price = p.calculatedPrice?.totalPrice || 0;
+
+            // Fallback to parent description if variant has none
+            const rawDescription = p.description || parent?.description;
+            const description = rawDescription ? rawDescription.replace(/<[^>]*>?/gm, '') : null;
 
             // Aggregate Options from all siblings/children
             const availableOptions: Record<string, Set<string>> = {};
@@ -326,13 +340,13 @@ export function registerProductTools(server: McpServer) {
                 price: price,
                 formattedPrice: currencySymbol ? `${price} ${currencySymbol}` : `${price}`,
                 currency: currencySymbol,
-                manufacturer: p.manufacturer?.name || null,
+                manufacturer: p.manufacturer?.name || parent?.manufacturer?.name || null,
                 deliveryTime: p.deliveryTime?.name || p.deliveryTime?.translated?.name || "Standard Delivery", // Added Delivery Time
                 stock: p.availableStock ?? 0,
                 rating: p.ratingAverage ?? null,
                 options: options,
                 availableOptions: formattedAvailableOptions, // <--- NEW FIELD
-                images: p.media?.map((m: any) => {
+                images: ((p.media && p.media.length > 0) ? p.media : (parent?.media || [])).map((m: any) => {
                     let url = m.media?.url;
                     if (url && !url.startsWith('http') && baseShopUrl) {
                         url = `${baseShopUrl}/${url.replace(/^\//, '')}`;
@@ -340,8 +354,11 @@ export function registerProductTools(server: McpServer) {
                     return url;
                 }).filter(Boolean) || [],
                 url: baseShopUrl ? `${baseShopUrl}/${p.seoUrls?.[0]?.seoPathInfo || `detail/${p.id}`}` : `detail/${p.id}`,
-                categoryName: p.categories?.[0]?.name ?? p.categories?.[0]?.translated?.name ?? null // <--- ADDED CATEGORY NAME
+                categoryName: p.categories?.[0]?.name ?? p.categories?.[0]?.translated?.name ?? parent?.categories?.[0]?.name ?? parent?.categories?.[0]?.translated?.name ?? null
             };
+
+
+            console.log("DEBUG: Product Detail Response:", JSON.stringify(productDetail, null, 2));
 
             return {
                 content: [{
