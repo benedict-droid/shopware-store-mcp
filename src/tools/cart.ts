@@ -13,7 +13,7 @@ export function registerCartTools(server: McpServer) {
             const client = new StoreApiClient({
                 swAccessKey: args.swAccessKey,
                 swContextToken: args.swContextToken,
-                swLanguageId: "2fbb5fe2e29a4d70aa5854ce7ce3e20b", // Hardcoded English Language ID
+                swLanguageId: args.swLanguageId || "2fbb5fe2e29a4d70aa5854ce7ce3e20b",
                 shopUrl: args.shopUrl
             });
 
@@ -30,11 +30,8 @@ export function registerCartTools(server: McpServer) {
                     return {
                         id: item.referencedId,
                         name: item.label,
-                        quantity: item.quantity,
                         price: item.price?.totalPrice || 0,
-                        unitPrice: item.price?.unitPrice || 0,
-                        type: item.type,
-                        imageUrl: item.cover?.url || null,
+                        quantity: item.quantity,
                         productNumber: item.payload?.productNumber || null
                     };
                 });
@@ -74,7 +71,7 @@ export function registerCartTools(server: McpServer) {
             const client = new StoreApiClient({
                 swAccessKey: args.swAccessKey,
                 swContextToken: args.swContextToken,
-                swLanguageId: "2fbb5fe2e29a4d70aa5854ce7ce3e20b", // Hardcoded English Language ID
+                swLanguageId: args.swLanguageId || "2fbb5fe2e29a4d70aa5854ce7ce3e20b",
                 shopUrl: args.shopUrl
             });
 

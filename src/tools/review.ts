@@ -30,7 +30,7 @@ export function registerReviewTools(server: McpServer) {
 
             try {
                 // POST /store-api/product/{productId}/reviews
-                const response = await client.post<any>(`product/${resolvedId}/reviews`, {
+                let response = await client.post<any>(`product/${resolvedId}/reviews`, {
                     limit: args.limit,
                     includes: {
                         product_review: ["id", "title", "content", "points", "createdAt", "externalUser"]
@@ -38,9 +38,33 @@ export function registerReviewTools(server: McpServer) {
                 });
 
                 if (!response.elements || response.elements.length === 0) {
-                    return {
-                        content: [{ type: "text", text: `No reviews found for product ${args.productId}.` }]
-                    };
+
+                    // FALLBACK: Try fetching from PARENT if this product is a variant
+                    // 1. Get Parent ID
+                    try {
+                        const productRes = await client.post<any>("product", {
+                            ids: [resolvedId],
+                            includes: { product: ["parentId"] }
+                        });
+                        const parentId = productRes.elements?.[0]?.parentId;
+
+                        if (parentId) {
+                            // 2. Fetch Parent Reviews
+                            response = await client.post<any>(`product/${parentId}/reviews`, {
+                                limit: args.limit,
+                                includes: {
+                                    product_review: ["id", "title", "content", "points", "createdAt", "externalUser"]
+                                }
+                            });
+                        }
+                    } catch (e) { /* Ignore errors, just return empty */ }
+
+                    // Double check after fallback
+                    if (!response.elements || response.elements.length === 0) {
+                        return {
+                            content: [{ type: "text", text: `No reviews found for product ${args.productId}.` }]
+                        };
+                    }
                 }
 
                 const reviews = response.elements.map((r: any) => {

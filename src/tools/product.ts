@@ -51,6 +51,7 @@ export function registerProductTools(server: McpServer) {
             }
 
             // Prepare filtering (Range filter for price)
+            // Prepare filtering (Range filter for price)
             const filters = [];
             if (args.minPrice !== undefined || args.maxPrice !== undefined) {
                 const rangeParam: any = {};
@@ -64,6 +65,15 @@ export function registerProductTools(server: McpServer) {
                 });
             }
 
+            // Fetch Context for Currency
+            let currencySymbol = "";
+            try {
+                const contextRes = await client.post<any>("context", {});
+                currencySymbol = contextRes.currency?.symbol || "";
+            } catch (e) {
+                console.warn("Failed to fetch context currency:", e);
+            }
+
             // Using the /store-api/search endpoint
             const response = await client.post<any>("search", {
                 search: args.term,
@@ -72,21 +82,15 @@ export function registerProductTools(server: McpServer) {
                 order: order,
                 filter: filters.length > 0 ? filters : undefined,
                 includes: {
-                    product: ["id", "productNumber", "name", "translated", "stock", "availableStock", "calculatedPrice", "parentId", "options", "properties", "availableStock", "seoUrls", "media", "cover", "ratingAverage", "description", "deliveryTime", "manufacturer"],
+                    product: ["id", "productNumber", "name", "translated", "stock", "availableStock", "calculatedPrice", "parentId", "seoUrls", "media", "cover", "description"],
                     product_media: ["media"],
                     media: ["url"],
-                    seo_url: ["seoPathInfo"],
-                    delivery_time: ["name", "translated"],
-                    product_manufacturer: ["name", "translated"]
+                    seo_url: ["seoPathInfo"]
                 },
                 associations: {
                     seoUrls: {},
-                    properties: { associations: { group: {} } },
-                    options: { associations: { group: {} } },
                     media: {},
-                    cover: {},
-                    deliveryTime: {}, // Request delivery time
-                    manufacturer: {} // Request manufacturer
+                    cover: {}
                 }
             });
 
@@ -131,12 +135,6 @@ export function registerProductTools(server: McpServer) {
                 }
                 name = name ?? "Unknown";
 
-                const opts = p.properties && p.properties.length > 0 ? p.properties : p.options;
-                const options = opts?.map((o: any) => ({
-                    group: o.group?.name ?? o.group?.translated?.name,
-                    option: o.name ?? o.translated?.name
-                }));
-
                 const price = p.calculatedPrice?.totalPrice ? p.calculatedPrice.totalPrice : 0;
 
                 // Get cover image or first media image - ensure absolute URL
@@ -149,47 +147,16 @@ export function registerProductTools(server: McpServer) {
                 const seoUrl = p.seoUrls?.[0]?.seoPathInfo || `detail/${p.id}`;
                 const productUrl = baseShopUrl ? `${baseShopUrl}/${seoUrl}` : seoUrl;
 
-                // Extract and clean description
-                let description = p.description ?? p.translated?.description ?? "";
-                description = description.replace(/<[^>]*>?/gm, ''); // Simple HTML strip
-                if (description.length > 500) {
-                    description = description.substring(0, 500) + "..."; // Truncate to save tokens
-                }
-
                 return {
                     id: p.id,
-                    productNumber: p.productNumber,
                     name: name,
-                    description: description,
-                    manufacturer: p.manufacturer?.name || null,
                     price: price,
-                    deliveryTime: p.deliveryTime?.name || p.deliveryTime?.translated?.name || null, // Search result delivery time
-                    stock: p.availableStock ?? 0,
-                    rating: p.ratingAverage ?? null,
-                    options: options,
-                    imageUrl: imageUrl, // Keep for list view compatibility
-                    images: imageUrl ? [imageUrl] : [], // Add for detail view compatibility
-                    url: productUrl
+                    formattedPrice: currencySymbol ? `${price} ${currencySymbol}` : `${price}`,
+                    currency: currencySymbol,
+                    url: productUrl,
+                    imageUrl: imageUrl
                 };
             });
-
-            // Manual Post-Sort for Rating to ensure Nulls are LAST
-            // Shopware API might put Nulls first, so we enforce: 5 -> 4 -> ... -> Null
-            if (args.sort === 'rating' || args.sort === 'rating-desc') {
-                products.sort((a: any, b: any) => {
-                    const rA = a.rating ?? -1;
-                    const rB = b.rating ?? -1;
-                    return rB - rA;
-                });
-            } else if (args.sort === 'rating-asc') {
-                products.sort((a: any, b: any) => {
-                    const rA = a.rating;
-                    const rB = b.rating;
-                    if (rA === null || rA === undefined) return 1;
-                    if (rB === null || rB === undefined) return -1;
-                    return rA - rB;
-                });
-            }
 
             return {
                 content: [{
@@ -250,7 +217,18 @@ export function registerProductTools(server: McpServer) {
                         associations: {
                             group: {}
                         }
-                    }
+                    },
+                    // Fetch children for parents
+                    children: {
+                        associations: {
+                            options: {
+                                associations: {
+                                    group: {}
+                                }
+                            }
+                        }
+                    },
+                    categories: {} // <--- ADDED CATEGORIES ASSOCIATION
                 }
             });
 
@@ -258,9 +236,79 @@ export function registerProductTools(server: McpServer) {
                 return { isError: true, content: [{ type: "text", text: `Product not found with ID: ${resolvedId}` }] };
             }
 
+            // Fetch Context for Currency
+            let currencySymbol = "";
+            try {
+                const contextRes = await client.get<any>("context");
+                console.error("DEBUG: Shop Context Response:", JSON.stringify(contextRes));
+                currencySymbol = contextRes.currency?.symbol || "";
+            } catch (e) {
+                console.error("DEBUG: Failed to fetch context currency:", e);
+            }
+
             const p = response.elements[0];
             const price = p.calculatedPrice?.totalPrice || 0;
             const description = p.description ? p.description.replace(/<[^>]*>?/gm, '') : null;
+
+            // ---------------------------------------------------------
+            // VARIANT AGGREGATION LOGIC
+            // ---------------------------------------------------------
+            let allVariants: any[] = [];
+
+            // Case A: Current product is a variant (has parent)
+            if (p.parentId) {
+                try {
+                    const parentRes = await client.post<any>("product", {
+                        ids: [p.parentId],
+                        associations: {
+                            children: {
+                                associations: {
+                                    options: { associations: { group: {} } }
+                                }
+                            }
+                        }
+                    });
+                    if (parentRes.elements?.[0]?.children) {
+                        allVariants = parentRes.elements[0].children;
+                    }
+                } catch (e) {
+                    console.error("Failed to fetch parent/siblings:", e);
+                }
+            }
+            // Case B: Current product is a Parent (has children)
+            else if (p.children && p.children.length > 0) {
+                allVariants = p.children;
+            }
+
+            // Aggregate Options from all siblings/children
+            const availableOptions: Record<string, Set<string>> = {};
+
+            // Helper to process a variant's options
+            const processOptions = (variant: any) => {
+                const opts = variant.properties || variant.options;
+                if (!opts) return;
+
+                opts.forEach((o: any) => {
+                    const group = o.group?.name || o.group?.translated?.name;
+                    const val = o.name || o.translated?.name;
+                    if (group && val) {
+                        if (!availableOptions[group]) availableOptions[group] = new Set();
+                        availableOptions[group].add(val);
+                    }
+                });
+            };
+
+            // Process all variants found
+            allVariants.forEach(processOptions);
+
+            // Also process the current product itself (in case it's not in the children list or is the parent)
+            processOptions(p);
+
+            // Convert Sets to Arrays for JSON output
+            const formattedAvailableOptions: Record<string, string[]> = {};
+            Object.keys(availableOptions).forEach(k => {
+                formattedAvailableOptions[k] = Array.from(availableOptions[k]);
+            });
 
             const opts = p.properties && p.properties.length > 0 ? p.properties : p.options;
             const options = opts?.map((o: any) => ({
@@ -269,17 +317,21 @@ export function registerProductTools(server: McpServer) {
             }));
 
             const baseShopUrl = (args.shopUrl || "").replace(/\/$/, "");
+
             const productDetail = {
                 id: p.id,
                 productNumber: p.productNumber,
                 name: p.name ?? p.translated?.name,
                 description: description,
                 price: price,
+                formattedPrice: currencySymbol ? `${price} ${currencySymbol}` : `${price}`,
+                currency: currencySymbol,
                 manufacturer: p.manufacturer?.name || null,
                 deliveryTime: p.deliveryTime?.name || p.deliveryTime?.translated?.name || "Standard Delivery", // Added Delivery Time
                 stock: p.availableStock ?? 0,
                 rating: p.ratingAverage ?? null,
                 options: options,
+                availableOptions: formattedAvailableOptions, // <--- NEW FIELD
                 images: p.media?.map((m: any) => {
                     let url = m.media?.url;
                     if (url && !url.startsWith('http') && baseShopUrl) {
@@ -287,7 +339,8 @@ export function registerProductTools(server: McpServer) {
                     }
                     return url;
                 }).filter(Boolean) || [],
-                url: baseShopUrl ? `${baseShopUrl}/${p.seoUrls?.[0]?.seoPathInfo || `detail/${p.id}`}` : `detail/${p.id}`
+                url: baseShopUrl ? `${baseShopUrl}/${p.seoUrls?.[0]?.seoPathInfo || `detail/${p.id}`}` : `detail/${p.id}`,
+                categoryName: p.categories?.[0]?.name ?? p.categories?.[0]?.translated?.name ?? null // <--- ADDED CATEGORY NAME
             };
 
             return {
