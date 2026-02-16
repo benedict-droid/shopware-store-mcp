@@ -38,13 +38,18 @@ export class StoreApiClient {
         const url = `${this.baseUrl}/store-api/${path.replace(/^\//, "")}`;
 
         try {
+            // Setup timeout
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+
             const response = await fetch(url, {
                 ...options,
+                signal: controller.signal,
                 headers: {
                     ...this.headers,
                     ...options.headers,
                 },
-            });
+            }).finally(() => clearTimeout(timeoutId));
 
             if (!response.ok) {
                 const errorBody = await response.text();
