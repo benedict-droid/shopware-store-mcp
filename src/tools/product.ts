@@ -341,11 +341,19 @@ export function registerProductTools(server: McpServer) {
                 formattedPrice: currencySymbol ? `${price} ${currencySymbol}` : `${price}`,
                 currency: currencySymbol,
                 manufacturer: p.manufacturer?.name || parent?.manufacturer?.name || null,
-                deliveryTime: p.deliveryTime?.name || p.deliveryTime?.translated?.name || "Standard Delivery", // Added Delivery Time
+                deliveryTime: p.deliveryTime?.name || p.deliveryTime?.translated?.name || "Standard Delivery",
                 stock: p.availableStock ?? 0,
                 rating: p.ratingAverage ?? null,
                 options: options,
-                availableOptions: formattedAvailableOptions, // <--- NEW FIELD
+                availableOptions: formattedAvailableOptions,
+                // Enhanced Attributes
+                material: p.properties?.find((prop: any) => prop.group?.name === "Material" || prop.group?.translated?.name === "Material")?.name
+                    ?? p.customFields?.material ?? null,
+                sustainability: p.properties?.find((prop: any) => prop.group?.name === "Sustainability" || prop.group?.translated?.name === "Sustainability")?.name
+                    ?? p.customFields?.sustainability ?? null,
+                dimensions: p.properties?.find((prop: any) => prop.group?.name === "Dimensions" || prop.group?.translated?.name === "Dimensions")?.name
+                    ?? (p.width && p.height && p.length ? `${p.length}x${p.width}x${p.height} mm` : null),
+
                 images: ((p.media && p.media.length > 0) ? p.media : (parent?.media || [])).map((m: any) => {
                     let url = m.media?.url;
                     if (url && !url.startsWith('http') && baseShopUrl) {
