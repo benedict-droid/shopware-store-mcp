@@ -13,6 +13,7 @@ export function registerOrderTools(server: McpServer) {
             })).shape
         },
         async (args) => {
+            console.log("Executing store_order_list with args:", args);
             const client = new StoreApiClient({
                 swAccessKey: args.swAccessKey,
                 swContextToken: args.swContextToken,
@@ -77,44 +78,45 @@ export function registerOrderTools(server: McpServer) {
         }
     );
 
-    server.registerTool(
-        "store_order_create",
-        {
-            description: "Place an order from the current cart.",
-            inputSchema: StoreCredentialsSchema.merge(z.object({
-                comment: z.string().optional().describe("Optional comment for the order"),
-            })).shape
-        },
-        async (args) => {
-            const client = new StoreApiClient({
-                swAccessKey: args.swAccessKey,
-                swContextToken: args.swContextToken,
-                swLanguageId: "2fbb5fe2e29a4d70aa5854ce7ce3e20b", // Hardcoded English Language ID
-                shopUrl: args.shopUrl
-            });
+    // server.registerTool(
+    //     "store_order_create",
+    //     {
+    //         description: "Place an order from the current cart.",
+    //         inputSchema: StoreCredentialsSchema.merge(z.object({
+    //             comment: z.string().optional().describe("Optional comment for the order"),
+    //         })).shape
+    //     },
+    //     async (args) => {
+    //         console.log("Executing store_order_create with args:", args);
+    //         const client = new StoreApiClient({
+    //             swAccessKey: args.swAccessKey,
+    //             swContextToken: args.swContextToken,
+    //             swLanguageId: "2fbb5fe2e29a4d70aa5854ce7ce3e20b", // Hardcoded English Language ID
+    //             shopUrl: args.shopUrl
+    //         });
 
-            try {
-                const response = await client.post<any>("checkout/order", {
-                    customerComment: args.comment
-                });
+    //         try {
+    //             const response = await client.post<any>("checkout/order", {
+    //                 customerComment: args.comment
+    //             });
 
-                return {
-                    content: [{ type: "text", text: `Success! Order placed. Order Number: ${response.orderNumber} (ID: ${response.id})` }]
-                };
-            } catch (error: any) {
-                // Handle Not Logged In
-                if (error.message && error.message.includes("403")) {
-                    return {
-                        isError: false,
-                        content: [{ type: "text", text: "The user is NOT logged in. You cannot place an order until the user logs in. Please ask them to log in." }]
-                    };
-                }
+    //             return {
+    //                 content: [{ type: "text", text: `Success! Order placed. Order Number: ${response.orderNumber} (ID: ${response.id})` }]
+    //             };
+    //         } catch (error: any) {
+    //             // Handle Not Logged In
+    //             if (error.message && error.message.includes("403")) {
+    //                 return {
+    //                     isError: false,
+    //                     content: [{ type: "text", text: "The user is NOT logged in. You cannot place an order until the user logs in. Please ask them to log in." }]
+    //                 };
+    //             }
 
-                return {
-                    isError: true,
-                    content: [{ type: "text", text: `Failed to place order. Ensure you have items in cart and are logged in. Error: ${error.message || error}` }]
-                };
-            }
-        }
-    );
+    //             return {
+    //                 isError: true,
+    //                 content: [{ type: "text", text: `Failed to place order. Ensure you have items in cart and are logged in. Error: ${error.message || error}` }]
+    //             };
+    //         }
+    //     }
+    // );
 }

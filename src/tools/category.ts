@@ -12,6 +12,7 @@ export function registerCategoryTools(server: McpServer) {
             })).shape
         },
         async (args) => {
+            console.log("Executing store_category_list with args:", args);
             const client = new StoreApiClient({
                 swAccessKey: args.swAccessKey,
                 swContextToken: args.swContextToken,
@@ -61,6 +62,7 @@ export function registerCategoryTools(server: McpServer) {
             })).shape
         },
         async (args) => {
+            console.log("Executing store_category_products with args:", args);
             const client = new StoreApiClient({
                 swAccessKey: args.swAccessKey,
                 swContextToken: args.swContextToken,

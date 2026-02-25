@@ -12,6 +12,7 @@ export function registerSystemTools(server: McpServer) {
             })).shape
         },
         async (args) => {
+            console.log("Executing store_language_list with args:", args);
             const client = new StoreApiClient({
                 swAccessKey: args.swAccessKey,
                 swContextToken: args.swContextToken,
@@ -62,6 +63,7 @@ export function registerSystemTools(server: McpServer) {
             })).shape
         },
         async (args) => {
+            console.log("Executing store_currency_list with args:", args);
             const client = new StoreApiClient({
                 swAccessKey: args.swAccessKey,
                 swContextToken: args.swContextToken,

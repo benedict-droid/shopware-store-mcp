@@ -24,6 +24,7 @@ export function registerProductTools(server: McpServer) {
             })).shape
         },
         async (args) => {
+            console.log("Executing store_product_search with args:", args);
             const client = new StoreApiClient({
                 swAccessKey: args.swAccessKey,
                 swContextToken: args.swContextToken,
@@ -185,6 +186,7 @@ export function registerProductTools(server: McpServer) {
             })).shape
         },
         async (args) => {
+            console.log("Executing store_product_detail with args:", args);
             const client = new StoreApiClient({
                 swAccessKey: args.swAccessKey,
                 swContextToken: args.swContextToken,

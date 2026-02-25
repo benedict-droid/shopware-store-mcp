@@ -10,6 +10,7 @@ export function registerCartTools(server: McpServer) {
             inputSchema: StoreCredentialsSchema.shape
         },
         async (args) => {
+            console.log("Executing store_cart_get with args:", args);
             const client = new StoreApiClient({
                 swAccessKey: args.swAccessKey,
                 swContextToken: args.swContextToken,
@@ -68,6 +69,7 @@ export function registerCartTools(server: McpServer) {
             })).shape
         },
         async (args) => {
+            console.log("Executing store_cart_add with args:", args);
             const client = new StoreApiClient({
                 swAccessKey: args.swAccessKey,
                 swContextToken: args.swContextToken,

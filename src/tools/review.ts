@@ -13,6 +13,7 @@ export function registerReviewTools(server: McpServer) {
             })).shape
         },
         async (args) => {
+            console.log("Executing store_product_reviews with args:", args);
             const client = new StoreApiClient({
                 swAccessKey: args.swAccessKey,
                 swContextToken: args.swContextToken,
