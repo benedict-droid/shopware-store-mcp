@@ -10,6 +10,7 @@ export function registerOrderTools(server: McpServer) {
             inputSchema: StoreCredentialsSchema.merge(z.object({
                 limit: z.number().max(3).default(3).describe("Max number of orders to return (Max: 3)"),
                 page: z.number().default(1).describe("The page number to retrieve"),
+                search_term: z.string().optional().describe("A keyword to filter orders by product name or an exact Order Number (e.g. 'lunch box' or '10283')"),
             })).shape
         },
         async (args) => {
@@ -21,8 +22,28 @@ export function registerOrderTools(server: McpServer) {
                 shopUrl: args.shopUrl
             });
             try {
+                // Prepare API filter if search_term is present
+                const filter = args.search_term ? [
+                    {
+                        type: "multi",
+                        operator: "or",
+                        queries: [
+                            {
+                                type: "contains",
+                                field: "lineItems.label",
+                                value: args.search_term
+                            },
+                            {
+                                type: "equals",
+                                field: "orderNumber",
+                                value: args.search_term
+                            }
+                        ]
+                    }
+                ] : undefined;
+
                 // POST /store-api/order with criteria
-                const response = await client.post<any>("order", {
+                const requestPayload: any = {
                     limit: Math.min(args.limit, 3),
                     page: args.page,
                     sort: [{ field: "orderDateTime", order: "DESC" }],
@@ -30,7 +51,11 @@ export function registerOrderTools(server: McpServer) {
                         lineItems: {},
                         stateMachineState: {}
                     }
-                });
+                };
+                if (filter) {
+                    requestPayload.filter = filter;
+                }
+                const response = await client.post<any>("order", requestPayload);
 
                 const ordersList = response.orders?.elements || [];
 
@@ -41,12 +66,17 @@ export function registerOrderTools(server: McpServer) {
                 }
 
                 const orders = ordersList.map((o: any) => {
+                    const products = (o.lineItems || []).map((li: any) => ({
+                        name: li.label,
+                        productId: li.payload?.productNumber || li.identifier || li.productId
+                    }));
                     return {
                         orderNumber: o.orderNumber,
                         date: new Date(o.orderDateTime).toLocaleDateString(),
                         status: o.stateMachineState?.name || "Unknown",
                         total: o.price?.totalPrice || 0,
-                        id: o.id
+                        id: o.id,
+                        products: products
                     };
                 });
 
