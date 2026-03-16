@@ -8,6 +8,7 @@ import { registerOrderTools } from "./tools/order.js";
 import { registerCategoryTools } from "./tools/category.js";
 import { registerReviewTools } from "./tools/review.js";
 import { registerSystemTools } from "./tools/system.js";
+import { registerCustomerTools } from "./tools/customer.js";
 
 const server = new McpServer({
     name: "shopware-store-mcp",
@@ -21,6 +22,7 @@ registerOrderTools(server);
 registerCategoryTools(server);
 registerReviewTools(server);
 registerSystemTools(server);
+registerCustomerTools(server);
 
 if (process.env.MCP_HTTP_ENABLED !== "false") {
     const port = parseInt(process.env.MCP_HTTP_PORT || "3334");

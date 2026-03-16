@@ -64,7 +64,7 @@ export function registerCartTools(server: McpServer) {
         {
             description: "Add a product to the cart.",
             inputSchema: StoreCredentialsSchema.merge(z.object({
-                productId: z.string().describe("The UUID of the product to add"),
+                productId: z.string().describe("The UUID or Product Number (SKU) of the product to add"),
                 quantity: z.number().default(1).describe("Quantity to add"),
             })).shape
         },
@@ -80,11 +80,20 @@ export function registerCartTools(server: McpServer) {
 
 
             try {
+                // Resolve Product ID (handles both SKU/ProductNumber and UUID)
+                const resolvedId = await client.resolveProductId(args.productId);
+                if (!resolvedId) {
+                    return {
+                        isError: true,
+                        content: [{ type: "text", text: `Failed to add to cart: Product not found with ID or Number '${args.productId}'` }]
+                    };
+                }
+
                 const response = await client.post<any>("checkout/cart/line-item", {
                     items: [
                         {
                             type: "product",
-                            referencedId: args.productId,
+                            referencedId: resolvedId,
                             quantity: args.quantity
                         }
                     ]
