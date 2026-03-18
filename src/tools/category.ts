@@ -77,9 +77,10 @@ export function registerCategoryTools(server: McpServer) {
     server.registerTool(
         "store_product_listing",
         {
-            description: "Get products for a specific category.",
+            description: "Get products for a specific category. You must provide either categoryId or categoryName.",
             inputSchema: StoreCredentialsSchema.merge(z.object({
-                categoryId: z.string().describe("The UUID of the category"),
+                categoryId: z.string().optional().describe("The UUID of the category (optional if name is provided)"),
+                categoryName: z.string().optional().describe("The name of the category (optional if ID is provided)"),
                 limit: z.number().max(3).default(3).describe("Max number of products to return"),
                 page: z.number().default(1).describe("The page number"),
             })).shape
@@ -94,8 +95,27 @@ export function registerCategoryTools(server: McpServer) {
             });
 
             try {
+                let targetCategoryId = args.categoryId;
+
+                // Resolve categoryName to categoryId if needed
+                if (!targetCategoryId && args.categoryName) {
+                    const catRes = await client.post<any>("category", {
+                        filter: [{ type: "equals", field: "name", value: args.categoryName }],
+                        limit: 1
+                    });
+                    if (catRes.elements && catRes.elements.length > 0) {
+                        targetCategoryId = catRes.elements[0].id;
+                    } else {
+                        return { content: [{ type: "text", text: `Category '${args.categoryName}' not found.` }] };
+                    }
+                }
+
+                if (!targetCategoryId) {
+                    return { content: [{ type: "text", text: `You must provide either a valid categoryId or categoryName.` }] };
+                }
+
                 // Use POST /product-listing/{categoryId}
-                const response = await client.post<any>(`product-listing/${args.categoryId}`, {
+                const response = await client.post<any>(`product-listing/${targetCategoryId}`, {
                     limit: args.limit,
                     p: args.page,
                     includes: {
@@ -123,7 +143,7 @@ export function registerCategoryTools(server: McpServer) {
 
                 if (!response.elements || response.elements.length === 0) {
                     return {
-                        content: [{ type: "text", text: `No products found in category ${args.categoryId}.` }]
+                        content: [{ type: "text", text: `No products found in category ${targetCategoryId}.` }]
                     };
                 }
 
